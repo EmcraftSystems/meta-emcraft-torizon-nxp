@@ -1,0 +1,5 @@
+# short-description: Create an OTA-enabled SD card image for the Emcraft SLX-SOM
+# long-description: The root file system alone, as an OSTree physical sysroot
+# at 8 MiB. U-Boot boots from the NAND and keeps its environment on the card
+# at 0xE0000-0xE4000, which this image does not cover.
+part / --source otaimage --ondisk mmcblk --fstype=ext4 --align 8192

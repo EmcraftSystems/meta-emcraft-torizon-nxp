@@ -6,7 +6,7 @@
 #
 #   source sources/meta-emcraft-torizon-nxp/scripts/setup-environment-nxp [BUILDDIR]
 #
-# Torizon's setup-environment accepts only Toradex's own machines, so this runs
+# Torizon's setup-environment accepts only the machines it lists, so this runs
 # the i.MX set-up it uses for imx6sxsabresd, then adds this layer.
 #
 # Copyright (C) 2026 Emcraft Systems

@@ -1,22 +1,9 @@
-require recipes-bsp/u-boot/u-boot-ota.inc
+# imx8mp-navqp builds voxelbotics' U-Boot 2023.04; every other machine keeps meta-imx's.
+require ${@'recipes-bsp/u-boot/u-boot-imx-navqp.inc' if d.getVar('MACHINE') == 'imx8mp-navqp' else ''}
 
-FILESEXTRAPATHS:prepend := "${THISDIR}/u-boot-imx:"
-FILESEXTRAPATHS:prepend := "${THISDIR}/u-boot-ota:"
+FILESEXTRAPATHS:prepend:imx6sx-slx-som := "${THISDIR}/u-boot-imx:"
 
-SRC_URI = "git://github.com/voxelbotics/u-boot-imx.git;protocol=https;branch=imx-6.1.22-vb;nobranch=1"
-
-SRC_URI += "\
-	file://envimport.cfg \
+SRC_URI:append:imx6sx-slx-som = " \
+    file://0001-imx6sx-add-the-Emcraft-SLX-SOM.patch \
+    file://slx-som-boot.cfg \
 "
-
-SRCREV = "ef538bb0d8dccb987053988dbceb94780dcab1b9"
-
-# NOTE: this fixes release build with the overridden SRCREV in site.conf
-PV = "2023.04-${SRCPV}"
-
-do_install:append () {
-        ln -sf ${sysconfdir}/u-boot-imx-initial-env ${D}/${sysconfdir}/u-boot-initial-env
-}
-
-FILES:${PN}-env += " ${sysconfdir}/u-boot-initial-env "
-LOCALVERSION = "-1.1.14-446-01231723-fc6d7c3511"

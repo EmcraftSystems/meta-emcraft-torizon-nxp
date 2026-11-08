@@ -24,3 +24,9 @@ export MACHINE
 if ! grep -q 'sources/meta-emcraft-torizon-nxp"' conf/bblayers.conf; then
     echo 'BBLAYERS += "${BSPDIR}/sources/meta-emcraft-torizon-nxp"' >> conf/bblayers.conf
 fi
+
+# On an integration.xml tree, Torizon's set-up adds use-head-next, which builds
+# aktualizr-torizon, rac and tzn-mqtt from their branches' heads. Comment it out,
+# so the build takes the revisions meta-toradex-torizon pins; the set-up finds
+# the commented line and does not add it again.
+sed -i 's/^DISTROOVERRIDES .= ":use-head-next"$/# &/' conf/local.conf

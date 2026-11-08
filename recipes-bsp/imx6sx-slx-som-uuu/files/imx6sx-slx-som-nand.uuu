@@ -1,0 +1,8 @@
+uuu_version 1.4.182
+
+# uuu gained the 1fc9:0152 fastboot gadget in December 2021.
+SDP: boot -f u-boot.imx
+FB: download -f u-boot.imx
+# The download lands at CONFIG_FASTBOOT_BUF_ADDR.
+FB: ucmd nandbcb init 0x83800000 nandboot ${filesize}
+FB: done

@@ -1,4 +1,4 @@
-From a29ea5b159584fc900fecf1854055f66ba88c274 Mon Sep 17 00:00:00 2001
+From 2d794810af91df2ff7375edc2486b6fe8429a653 Mon Sep 17 00:00:00 2001
 From: Vladimir Khusainov <vlad@emcraft.com>
 Date: Sun, 8 Nov 2026 12:07:54 +0100
 Subject: [PATCH] imx6sx: add the Emcraft SLX-SOM
@@ -16,16 +16,16 @@ Signed-off-by: Vladimir Khusainov <vlad@emcraft.com>
 ---
  arch/arm/dts/Makefile                   |   1 +
  arch/arm/dts/imx6sx-slx-som-u-boot.dtsi |  13 ++
- arch/arm/dts/imx6sx-slx-som.dts         | 184 ++++++++++++++++++++++++
+ arch/arm/dts/imx6sx-slx-som.dts         | 181 ++++++++++++++++++++++++
  arch/arm/mach-imx/mx6/Kconfig           |   9 ++
  board/emcraft/slx-som/Kconfig           |  18 +++
  board/emcraft/slx-som/MAINTAINERS       |   8 ++
  board/emcraft/slx-som/Makefile          |   3 +
- board/emcraft/slx-som/imximage.cfg      | 134 +++++++++++++++++
+ board/emcraft/slx-som/imximage.cfg      | 134 ++++++++++++++++++
  board/emcraft/slx-som/slx-som.c         |  85 +++++++++++
  configs/imx6sx_slx_som_defconfig        |  89 ++++++++++++
  include/configs/slx-som.h               |  37 +++++
- 11 files changed, 581 insertions(+)
+ 11 files changed, 578 insertions(+)
  create mode 100644 arch/arm/dts/imx6sx-slx-som-u-boot.dtsi
  create mode 100644 arch/arm/dts/imx6sx-slx-som.dts
  create mode 100644 board/emcraft/slx-som/Kconfig
@@ -50,7 +50,7 @@ index 737e959a6b5..bbb4034ada9 100644
  	imx6sx-udoo-neo-basic.dtb \
 diff --git a/arch/arm/dts/imx6sx-slx-som-u-boot.dtsi b/arch/arm/dts/imx6sx-slx-som-u-boot.dtsi
 new file mode 100644
-index 00000000000..dfc004f5fc1
+index 00000000000..a58f726e7a4
 --- /dev/null
 +++ b/arch/arm/dts/imx6sx-slx-som-u-boot.dtsi
 @@ -0,0 +1,13 @@
@@ -59,7 +59,7 @@ index 00000000000..dfc004f5fc1
 + * Copyright (C) 2026 Emcraft Systems
 + */
 +
-+/* The AR8031's I/O at 1.8 V, as Emcraft's board_phy_config() set it */
++/* The AR8031's I/O at 1.8 V */
 +&ethphy1 {
 +	vddio1: vddio-regulator {
 +		regulator-name = "VDDIO";
@@ -69,18 +69,15 @@ index 00000000000..dfc004f5fc1
 +};
 diff --git a/arch/arm/dts/imx6sx-slx-som.dts b/arch/arm/dts/imx6sx-slx-som.dts
 new file mode 100644
-index 00000000000..2019fc35e67
+index 00000000000..5f40b61f15f
 --- /dev/null
 +++ b/arch/arm/dts/imx6sx-slx-som.dts
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,181 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * Emcraft SLX-SOM (i.MX 6SoloX) on the LCD-SLX-SOM-BSB baseboard.
 + *
 + * Copyright (C) 2017-2026 Emcraft Systems
-+ *
-+ * Pins and pad settings from the module's Linux 4.5 device tree and
-+ * Emcraft's U-Boot 2015.04 (board/emcraft/slx-som/slx-som.c).
 + */
 +
 +/dts-v1/;

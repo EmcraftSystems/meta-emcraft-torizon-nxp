@@ -4,7 +4,9 @@
 # Toradex's NXP manifest (common-torizon/nxp/integration.xml), with this layer
 # cloned into sources/:
 #
-#   source sources/meta-emcraft-torizon-nxp/scripts/setup-environment-nxp [BUILDDIR]
+#   EULA=1 source sources/meta-emcraft-torizon-nxp/scripts/setup-environment-nxp [BUILDDIR]
+#
+# EULA=1 accepts NXP's EULA; without it, the set-up asks.
 #
 # Torizon's setup-environment accepts only the machines it lists, so this runs
 # the i.MX set-up it uses for imx6sxsabresd, then adds this layer.
@@ -14,9 +16,8 @@
 
 MACHINE=imx6sx-slx-som
 _TDX_DISTRO_SELECT=common-torizon
-EULA=1
 unset DISTRO
-export MACHINE EULA
+export MACHINE
 
 . sources/meta-toradex-torizon/scripts/lib/setup-devices/setup-environment-imx "${1:-build-imx6sx-slx-som}"
 

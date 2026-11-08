@@ -1,4 +1,4 @@
-From 5204ed2e00a294250937c6e913af2248e14fe038 Mon Sep 17 00:00:00 2001
+From a29ea5b159584fc900fecf1854055f66ba88c274 Mon Sep 17 00:00:00 2001
 From: Vladimir Khusainov <vlad@emcraft.com>
 Date: Sun, 8 Nov 2026 12:07:54 +0100
 Subject: [PATCH] imx6sx: add the Emcraft SLX-SOM
@@ -16,16 +16,16 @@ Signed-off-by: Vladimir Khusainov <vlad@emcraft.com>
 ---
  arch/arm/dts/Makefile                   |   1 +
  arch/arm/dts/imx6sx-slx-som-u-boot.dtsi |  13 ++
- arch/arm/dts/imx6sx-slx-som.dts         | 185 ++++++++++++++++++++++++
+ arch/arm/dts/imx6sx-slx-som.dts         | 184 ++++++++++++++++++++++++
  arch/arm/mach-imx/mx6/Kconfig           |   9 ++
  board/emcraft/slx-som/Kconfig           |  18 +++
- board/emcraft/slx-som/MAINTAINERS       |   8 +
+ board/emcraft/slx-som/MAINTAINERS       |   8 ++
  board/emcraft/slx-som/Makefile          |   3 +
- board/emcraft/slx-som/imximage.cfg      | 138 ++++++++++++++++++
- board/emcraft/slx-som/slx-som.c         |  93 ++++++++++++
+ board/emcraft/slx-som/imximage.cfg      | 134 +++++++++++++++++
+ board/emcraft/slx-som/slx-som.c         |  85 +++++++++++
  configs/imx6sx_slx_som_defconfig        |  89 ++++++++++++
  include/configs/slx-som.h               |  37 +++++
- 11 files changed, 594 insertions(+)
+ 11 files changed, 581 insertions(+)
  create mode 100644 arch/arm/dts/imx6sx-slx-som-u-boot.dtsi
  create mode 100644 arch/arm/dts/imx6sx-slx-som.dts
  create mode 100644 board/emcraft/slx-som/Kconfig
@@ -69,10 +69,10 @@ index 00000000000..dfc004f5fc1
 +};
 diff --git a/arch/arm/dts/imx6sx-slx-som.dts b/arch/arm/dts/imx6sx-slx-som.dts
 new file mode 100644
-index 00000000000..3e55c7b8b5c
+index 00000000000..2019fc35e67
 --- /dev/null
 +++ b/arch/arm/dts/imx6sx-slx-som.dts
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,184 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * Emcraft SLX-SOM (i.MX 6SoloX) on the LCD-SLX-SOM-BSB baseboard.
@@ -101,7 +101,6 @@ index 00000000000..3e55c7b8b5c
 +		reg = <0x80000000 0x20000000>;
 +	};
 +
-+	/* PERI_3V3, which Emcraft's U-Boot drives high in board_init() */
 +	reg_peri_3v3: regulator-peri-3v3 {
 +		compatible = "regulator-fixed";
 +		pinctrl-names = "default";
@@ -334,17 +333,13 @@ index 00000000000..be172eb042e
 +obj-y  := slx-som.o
 diff --git a/board/emcraft/slx-som/imximage.cfg b/board/emcraft/slx-som/imximage.cfg
 new file mode 100644
-index 00000000000..45114c07f93
+index 00000000000..f7caaafe2ce
 --- /dev/null
 +++ b/board/emcraft/slx-som/imximage.cfg
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,134 @@
 +/* SPDX-License-Identifier: GPL-2.0+ */
 +/*
 + * Copyright (C) 2017 Emcraft Systems
-+ *
-+ * The DCD of Emcraft's U-Boot 2015.04 for the SLX-SOM
-+ * (u-boot-fsl, board/emcraft/slx-som/imximage.cfg), for the
-+ * Micron MT41K256M16TW-107 DDR3 on the module.
 + */
 +
 +#include <config.h>
@@ -478,19 +473,13 @@ index 00000000000..45114c07f93
 +DATA 4 0x021b001c 0x00000000
 diff --git a/board/emcraft/slx-som/slx-som.c b/board/emcraft/slx-som/slx-som.c
 new file mode 100644
-index 00000000000..42785196047
+index 00000000000..2bc407c8094
 --- /dev/null
 +++ b/board/emcraft/slx-som/slx-som.c
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,85 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
-+ * Emcraft SLX-SOM (i.MX 6SoloX) on the LCD-SLX-SOM-BSB baseboard.
-+ *
 + * Copyright (C) 2017-2026 Emcraft Systems
-+ *
-+ * The pins, the regulators and the PHY are in the device tree,
-+ * imx6sx-slx-som.dts. What is left here is what the device tree does not
-+ * describe on the i.MX 6: the Ethernet reference clocks and the GPMI clock.
 + */
 +
 +#include <init.h>
@@ -535,7 +524,6 @@ index 00000000000..42785196047
 +	return 0;
 +}
 +
-+/* The GPMI clock, as Emcraft's U-Boot 2015.04 and NXP's mx6sxsabreauto set it */
 +static void setup_gpmi_nand(void)
 +{
 +	struct mxc_ccm_reg *mxc_ccm = (struct mxc_ccm_reg *)CCM_BASE_ADDR;
@@ -561,7 +549,6 @@ index 00000000000..42785196047
 +	/* Address of boot parameters */
 +	gd->bd->bi_boot_params = PHYS_SDRAM + 0x100;
 +
-+	/* PERI_3V3 and the PHY's supply are regulators marked boot-on */
 +	regulators_enable_boot_on(false);
 +
 +	setup_gpmi_nand();

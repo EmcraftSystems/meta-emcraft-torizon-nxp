@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# Create or enter a build directory for imx6sx-slx-som in a tree made from
+# Toradex's NXP manifest (common-torizon/nxp/integration.xml), with this layer
+# cloned into sources/:
+#
+#   EULA=1 source sources/meta-emcraft-torizon-nxp/scripts/setup-environment-nxp [BUILDDIR]
+#
+# EULA=1 accepts NXP's EULA; without it, the set-up asks.
+#
+# Torizon's setup-environment accepts only the machines it lists, so this runs
+# the i.MX set-up it uses for imx6sxsabresd, then adds this layer.
+#
+# Copyright (C) 2026 Emcraft Systems
+# SPDX-License-Identifier: MIT
+
+MACHINE=imx6sx-slx-som
+_TDX_DISTRO_SELECT=common-torizon
+unset DISTRO
+export MACHINE
+
+. sources/meta-toradex-torizon/scripts/lib/setup-devices/setup-environment-imx "${1:-build-imx6sx-slx-som}"
+
+if ! grep -q 'sources/meta-emcraft-torizon-nxp"' conf/bblayers.conf; then
+    echo 'BBLAYERS += "${BSPDIR}/sources/meta-emcraft-torizon-nxp"' >> conf/bblayers.conf
+fi
+
+# On an integration.xml tree, Torizon's set-up adds use-head-next, which builds
+# aktualizr-torizon, rac and tzn-mqtt from their branches' heads. Comment it out,
+# so the build takes the revisions meta-toradex-torizon pins; the set-up finds
+# the commented line and does not add it again.
+sed -i 's/^DISTROOVERRIDES .= ":use-head-next"$/# &/' conf/local.conf

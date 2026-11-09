@@ -1,4 +1,4 @@
-IMAGE_ROOTFS_MAXSIZE = "2650000"
+IMAGE_ROOTFS_MAXSIZE:imx8mp-navqp = "2650000"
 
 # NOTE: ignore OTA bootloader until the recipe is implemented
 UBOOT_BINARY_OTA_IGNORE:imx8mp-navqp = "1"
@@ -13,6 +13,6 @@ UBOOT_ENV_TEZI_EMMC:imx8mp-navqp = ""
 
 KERNEL_DEVICETREE_BASENAME:imx8mp-navqp = "imx8mp-navq"
 
-CORE_IMAGE_BASE_INSTALL:append = " \
+CORE_IMAGE_BASE_INSTALL:append:imx8mp-navqp = " \
     e2fsprogs-resize2fs \
 "

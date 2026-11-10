@@ -18,7 +18,7 @@ uboot_assemble_fitimage_helper:append:imx6sx-slx-som() {
     len=$(od -An -tu4 -j36 -N4 "$signed" | tr -d ' ')
     [ -n "$len" ] && [ "$len" -gt $(stat -c%s "$signed") ] || \
         bbfatal "$signed: boot data length '$len' does not reach past the file"
-    truncate -s $((len - 1024)) "$signed"
+    truncate -s $(expr $len - 1024) "$signed"
 }
 
 # The FIT public key goes into U-Boot's control device tree. poky's

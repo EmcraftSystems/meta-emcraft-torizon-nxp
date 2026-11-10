@@ -3,4 +3,7 @@ Description=Keep device monitoring on across reboots of a signed image
 
 [Service]
 Type=oneshot
+# Stays active once done: its path unit, whose PathExists= still holds,
+# would otherwise start it again and again until the start limit fails both.
+RemainAfterExit=yes
 ExecStart=/bin/touch /var/rootdirs/etc/fluent-bit/enabled

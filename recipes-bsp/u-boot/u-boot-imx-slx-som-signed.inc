@@ -62,9 +62,11 @@ SRC_URI:append:imx6sx-slx-som = " \
 "
 
 # No class tracks the signing keys' contents, so a key replaced at the same
-# path would otherwise get a U-Boot signed with the old one from sstate.
+# path would otherwise get a U-Boot signed with the old one from sstate. The
+# SRK fuse file is read here too, for fuse-cmds.txt and the fusing inputs.
 do_uboot_assemble_fitimage[file-checksums] += "\
     ${TDX_IMX_HAB_CST_SRK}:True \
+    ${TDX_IMX_HAB_CST_SRK_FUSE}:True \
     ${TDX_IMX_HAB_CST_CSF_CERT}:True \
     ${TDX_IMX_HAB_CST_IMG_CERT}:True \
     ${UBOOT_SIGN_KEYDIR}/${UBOOT_SIGN_KEYNAME}.crt:True \
@@ -106,6 +108,10 @@ do_configure:append:imx6sx-slx-som() {
         ! grep -q "^CONFIG_$sym=y" "$nand/.config" || \
             bbfatal "CONFIG_$sym is set in the NAND U-Boot"
     done
+    # Torizon's fusing steps through the fuse words with setexpr; without it
+    # every word would go to the first one.
+    grep -q "^CONFIG_CMD_SETEXPR=y" "$nand/.config" || \
+        bbfatal "the NAND U-Boot has no setexpr, which Torizon's fusing needs"
     # preboot comes from the SD card's environment, which Linux writes; only
     # the debug build of the hardening, for tests, may run it.
     if [ "${TDX_UBOOT_HARDENING_ENABLE_DBG}" != "1" ] && \
@@ -117,4 +123,53 @@ do_configure:append:imx6sx-slx-som() {
 do_deploy:append:imx6sx-slx-som() {
     [ "$(readlink ${DEPLOYDIR}/${UBOOT_BINARY})" = "u-boot-nand-${PV}-${PR}.${UBOOT_SUFFIX}" ] || \
         bbfatal "${UBOOT_BINARY} is not the NAND U-Boot"
+}
+
+# Inputs for Torizon's fusing on this board, made from the SRK hash the build
+# just wrote to imx-config.fuse, so that no value is typed by hand. A wrong
+# word written to a fuse cannot be undone.
+#   fuse-firstboot-dryrun.env  fw_setenv -s: first-boot fusing, dry run, with
+#                              the close, to rehearse on a part never fused
+#   fuse-firstboot-srk.env     fw_setenv -s: first-boot fusing of the SRK
+#                              hash, no close
+#   fuse-firstboot-close.env   fw_setenv -s: first-boot fusing of the SRK
+#                              hash and the close, without Torizon Cloud
+#   fuse-dryrun.yml            fuse package, eight zero words, no close:
+#                              programs nothing even without a dry run
+#   fuse-srk.yml               fuse package, the SRK hash, no close
+#   fuse-close.yml             fuse package, the SRK hash and the close
+# The environment is on the SD card with the module's own settings, such as
+# ethaddr, so the .env files are merged into it from Linux with fw_setenv -s,
+# not written over it. The .yml files are in TorizonCore Builder's canonical
+# form, as its own fuse push would make them; the hardware ID is
+# imx6sx-slx-som-fuses.
+do_deploy:append:imx6sx-slx-som() {
+    cfg=${WORKDIR}/imx-config.fuse
+    [ -e "$cfg" ] || bbfatal "no imx-config.fuse to make the fuse files from"
+    words=$(sed -n 's/^H:F:3:\([0-7]\):\(0x[0-9A-Fa-f]\{1,8\}\)$/\1 \2/p' $cfg | sort -n | \
+        while read w v; do printf '0x%x\n' $v; done)
+    [ $(echo "$words" | wc -l) = 8 ] || bbfatal "imx-config.fuse does not hold bank 3 words 0 to 7"
+    sed -n 's/^H:F:3:\([0-7]\):.*/\1/p' $cfg | tr '\n' ' ' | grep -qx '0 1 2 3 4 5 6 7 ' || \
+        bbfatal "imx-config.fuse's SRK words are not bank 3 words 0 to 7, in order"
+    grep -qx 'H:C:0:6:0x00000002' $cfg || \
+        bbfatal "imx-config.fuse closes with something other than bank 0 word 6, 0x2"
+    srk=$(hexdump -v -e '/4 "0x%x\n"' ${TDX_IMX_HAB_CST_SRK_FUSE})
+    [ "$words" = "$srk" ] || bbfatal "imx-config.fuse differs from ${TDX_IMX_HAB_CST_SRK_FUSE}"
+    list=$(echo $words)
+    printf 'fuse_prog_list=%s\nfuse_prog_close=1\nfuse_status=pending\nfuse_dry_run=1\n' "$list" \
+        > ${DEPLOYDIR}/fuse-firstboot-dryrun.env
+    printf 'fuse_prog_list=%s\nfuse_prog_close=0\nfuse_status=pending\nfuse_dry_run=0\n' "$list" \
+        > ${DEPLOYDIR}/fuse-firstboot-srk.env
+    printf 'fuse_prog_list=%s\nfuse_prog_close=1\nfuse_status=pending\nfuse_dry_run=0\n' "$list" \
+        > ${DEPLOYDIR}/fuse-firstboot-close.env
+    { echo 'fuses:'; echo '  fuse-close: false'
+      for i in 1 2 3 4 5 6 7 8; do echo "  fuse-val$i: 0x0"; done; } > ${DEPLOYDIR}/fuse-dryrun.yml
+    { echo 'fuses:'; echo '  fuse-close: false'
+      i=1; for v in $words; do echo "  fuse-val$i: $v"; i=$(expr $i + 1); done; } > ${DEPLOYDIR}/fuse-srk.yml
+    { echo 'fuses:'; echo '  fuse-close: true'
+      i=1; for v in $words; do echo "  fuse-val$i: $v"; i=$(expr $i + 1); done; } > ${DEPLOYDIR}/fuse-close.yml
+    for f in fuse-firstboot-dryrun.env fuse-firstboot-srk.env fuse-firstboot-close.env \
+             fuse-dryrun.yml fuse-srk.yml fuse-close.yml; do
+        ! grep -q '[[:space:]]$' ${DEPLOYDIR}/$f || bbfatal "$f has trailing whitespace"
+    done
 }

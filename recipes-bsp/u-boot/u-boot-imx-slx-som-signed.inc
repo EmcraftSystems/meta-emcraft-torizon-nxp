@@ -68,8 +68,32 @@ do_configure:prepend:imx6sx-slx-som() {
 SLXSOM_UBOOT_SDP_CONFIG = "${@(d.getVarFlag('UBOOT_CONFIG', 'sdp') or '').split(',')[0]}"
 SLXSOM_UBOOT_NAND_CONFIG = "${@(d.getVarFlag('UBOOT_CONFIG', 'nand') or '').split(',')[0]}"
 
+# Installing a closed part over the serial downloader: Toradex's Fastboot
+# protection, ported to NXP's fastboot (see the patch), lets the sdp U-Boot
+# run fastboot and the NAND install's commands under the hardening. It is
+# built into sdp only: the NAND U-Boot keeps refusing fastboot on a closed
+# part. The symbols depend on TDX_SECBOOT_HARDENING, which the hardening's
+# fragment sets after the defconfig, so they come in a fragment merged into
+# sdp's build directory, as the hardening merges its own per-type fragment.
+# It is not in SRC_URI, where poky would merge it into every type.
+SRC_URI:append:imx6sx-slx-som = " \
+    file://0003-imx6sx-slx-som-Toradex-Fastboot-protection-on-NXP-s-fastboot-for-the-NAND-install.patch \
+"
+
 do_configure:append:imx6sx-slx-som() {
     sdp="${B}/${SLXSOM_UBOOT_SDP_CONFIG}"
+    nand="${B}/${SLXSOM_UBOOT_NAND_CONFIG}"
+    printf '%s\n' CONFIG_TDX_FB_PROTECTION=y CONFIG_TDX_FB_PROTECTION_ALLOW_CMD=y \
+        > ${WORKDIR}/sdp-install.cfg
+    merge_config.sh -m -O "$sdp" "$sdp/.config" ${WORKDIR}/sdp-install.cfg
+    oe_runmake -C ${S} O="$sdp" oldconfig
+
+    for sym in TDX_FB_PROTECTION TDX_FB_PROTECTION_ALLOW_CMD; do
+        grep -q "^CONFIG_$sym=y" "$sdp/.config" || \
+            bbfatal "CONFIG_$sym is not set in the sdp U-Boot"
+        ! grep -q "^CONFIG_$sym=y" "$nand/.config" || \
+            bbfatal "CONFIG_$sym is set in the NAND U-Boot"
+    done
     # preboot comes from the SD card's environment, which Linux writes; only
     # the debug build of the hardening, for tests, may run it.
     if [ "${TDX_UBOOT_HARDENING_ENABLE_DBG}" != "1" ] && \

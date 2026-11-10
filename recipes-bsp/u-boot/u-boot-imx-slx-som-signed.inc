@@ -7,6 +7,18 @@ uboot_assemble_fitimage_helper:append:imx6sx-slx-som() {
     type="$1"
     binary="$2"
     imx6_imx7_sign_habv4 "IMX6" "${type}" "${binary}"
+
+    # The boot data length runs to the end of the CSF area (CONFIG_CSF_SIZE),
+    # past the end of the signed file. nandbcb records in the FCB only the
+    # pages the file fills, and the boot ROM loads nothing from a NAND image
+    # shorter than its boot data says. So the file is padded with zeros to
+    # the boot data length, less the 1 KiB before the IVT it starts with.
+    signed="${UBOOT_BINARYNAME}-${type}.${UBOOT_SUFFIX}"
+    [ -n "${type}" ] || signed="${UBOOT_BINARY}"
+    len=$(od -An -tu4 -j36 -N4 "$signed" | tr -d ' ')
+    [ -n "$len" ] && [ "$len" -gt $(stat -c%s "$signed") ] || \
+        bbfatal "$signed: boot data length '$len' does not reach past the file"
+    truncate -s $((len - 1024)) "$signed"
 }
 
 # The FIT public key goes into U-Boot's control device tree. poky's

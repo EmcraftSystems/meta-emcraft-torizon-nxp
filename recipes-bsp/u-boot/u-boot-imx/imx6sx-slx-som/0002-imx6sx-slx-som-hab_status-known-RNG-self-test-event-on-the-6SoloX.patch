@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Fri, 30 Oct 2026 15:40:00 +0100
+Subject: [PATCH] imx6sx-slx-som: hab_status: known RNG self-test event on the
+ 6SoloX
+
+The i.MX 6SoloX boot ROM logs a HAB warning when its CAAM RNG self-test
+fails: STS HAB_WARNING, RSN HAB_ENG_FAIL, CTX HAB_CTX_ENTRY, ENG
+HAB_ENG_CAAM. The ROM's self-test is wrong; U-Boot runs the test again
+and instantiates the RNG ("RNG self test passed"). Toradex's patch
+ignores this event on the 6Quad and 6DualLite only, and with 0x04 in
+byte 9, so on the 6SoloX hab_status fails on every boot, and Torizon's
+fusing, which checks hab_status, never closes the part.
+
+Ignore it on the 6SoloX as well, with 0x08 in byte 9, as the ROM reports
+it here. barebox lists the same 36 bytes in habv4_known_rng_fail_events.
+hab_status still prints the event, and any other event still fails.
+
+Upstream-Status: Inappropriate [SoC-specific; extends Toradex's list]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ common/tdx-hab-utils.c  | 6 ++++++
+ include/tdx-hab-utils.h | 3 ++-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/common/tdx-hab-utils.c b/common/tdx-hab-utils.c
+index 840a640..fc11681 100644
+--- a/common/tdx-hab-utils.c
++++ b/common/tdx-hab-utils.c
+@@ -13,6 +13,12 @@ static uint8_t known_rng_fail_event[][RNG_FAIL_EVENT_SIZE] = {
+ 	  0x55, 0x55, 0x00, 0x03,  0x00, 0x00, 0x00, 0x00,
+ 	  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,
+ 	  0x00, 0x00, 0x00, 0x01 },
++	/* The i.MX 6SoloX boot ROM reports the same event with 0x08 here. */
++	{ 0xdb, 0x00, 0x24, 0x42,  0x69, 0x30, 0xe1, 0x1d,
++	  0x00, 0x08, 0x00, 0x02,  0x40, 0x00, 0x36, 0x06,
++	  0x55, 0x55, 0x00, 0x03,  0x00, 0x00, 0x00, 0x00,
++	  0x00, 0x00, 0x00, 0x00,  0x00, 0x00, 0x00, 0x00,
++	  0x00, 0x00, 0x00, 0x01 },
+ };
+ 
+ bool is_known_fail_event(const uint8_t *data, size_t len)
+diff --git a/include/tdx-hab-utils.h b/include/tdx-hab-utils.h
+index 316a0a6..8fc768e 100644
+--- a/include/tdx-hab-utils.h
++++ b/include/tdx-hab-utils.h
+@@ -3,7 +3,8 @@
+  * Copyright 2024 Toradex
+  */
+ 
+-#if (defined(CONFIG_MX6Q) || defined(CONFIG_MX6DL) || defined(CONFIG_MX6QDL))
++#if (defined(CONFIG_MX6Q) || defined(CONFIG_MX6DL) || defined(CONFIG_MX6QDL) || \
++     defined(CONFIG_MX6SX))
+ #define IGNORE_KNOWN_HAB_EVENTS 1
+ #endif
+ 

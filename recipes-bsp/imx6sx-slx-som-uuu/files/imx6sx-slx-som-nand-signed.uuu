@@ -1,0 +1,14 @@
+uuu_version 1.4.182
+
+# A signed build's U-Boot installation. u-boot.imx-sdp is the U-Boot signed
+# for this load: uuu writes the DCD itself and clears the IVT's DCD pointer
+# (meta-toradex-security, README-secure-boot-imx.md, "Bootloaders targeting
+# SDP loading").
+SDP: boot -f u-boot.imx-sdp -dcdaddr 0x00910000 -cleardcd
+# Stop at once if the boot ROM logged a HAB event other than the 6SoloX's
+# known RNG self-test one: hab_status then fails.
+FB: ucmd hab_status
+FB: download -f u-boot.imx
+# The download lands at CONFIG_FASTBOOT_BUF_ADDR.
+FB: ucmd nandbcb init 0x83800000 nandboot ${filesize}
+FB: done

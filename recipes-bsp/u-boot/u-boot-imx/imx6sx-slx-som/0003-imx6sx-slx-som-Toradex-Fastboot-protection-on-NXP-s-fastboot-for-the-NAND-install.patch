@@ -1,0 +1,370 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vladimir Khusainov <vlad@emcraft.com>
+Date: Tue, 10 Nov 2026 07:30:00 +0300
+Subject: [PATCH] imx6sx-slx-som: Toradex Fastboot protection on NXP's
+ fastboot, for the NAND install
+
+Toradex's Fastboot protection (CONFIG_TDX_FB_PROTECTION, with
+CONFIG_TDX_FB_PROTECTION_ALLOW_CMD to let "fastboot" pass the command
+whitelist) exists for upstream U-Boot only. This ports it to NXP's
+fastboot (drivers/fastboot/fb_fsl), for a U-Boot loaded over the serial
+downloader to install U-Boot in the NAND of a closed part:
+
+- Kconfig: the two symbols, with Toradex's text and dependencies.
+- fb_common.c: the download buffer is checked against
+  tdx_valid_loadaddr() and reset to the default when it fails.
+- fb_fsl_command.c: only getvar, download, flash, erase, continue, UCmd
+  and ACmd are kept, Toradex's set. "upload" and "get_staged", which
+  read memory back to the host, are dropped with the others. UCmd and
+  ACmd run only the installation's commands, as plain words:
+  "hab_status", and "nandbcb init" with the download buffer as its
+  source and a size within it, or "${filesize}". The whitelist alone
+  would let a command it marks as needed through with any arguments.
+- autoboot.c: on a USB boot, the default environment and "fastboot 0",
+  whatever the stored environment holds: no bootcmd_mfg, whose "iminfo"
+  the whitelist refuses, and no altbootcmd.
+- whitelist.c: with the fastboot command allowed, "nandbcb init" is
+  allowed too. The table has no entry for nand or nandbcb otherwise, and
+  refuses both, on an open part as on a closed one.
+
+Ported from Emcraft's protection of the eMMC install on another
+i.MX 6SoloX board, by Vladimir Skvortsov.
+
+Upstream-Status: Inappropriate [board specific; ports Toradex's upstream-only protection]
+Signed-off-by: Vladimir Khusainov <vlad@emcraft.com>
+---
+ Kconfig                                  | 20 +++++
+ common/autoboot.c                        | 23 +++++-
+ common/whitelist.c                       |  8 ++
+ drivers/fastboot/fb_common.c             | 39 ++++++++++
+ drivers/fastboot/fb_fsl/fb_fsl_command.c | 95 ++++++++++++++++++++++++
+ 5 files changed, 183 insertions(+), 2 deletions(-)
+
+diff --git a/Kconfig b/Kconfig
+index a630a092..bee13d4c 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -801,3 +801,23 @@ config TDX_BOOTARGS_PROTECTION
+ 	  against information in the device-tree provided to the bootm
+ 	  command. Since the device-tree is supposed to come from a signed
+ 	  FIT image, it is expected to be a trustworthy source of information.
++
++config TDX_FB_PROTECTION
++	bool "Enable the Fastboot protections"
++	default n
++	depends on TDX_SECBOOT_HARDENING && TDX_LOAD_PROTECTION
++	help
++	  Enable the protections related to Fastboot which includes placing
++	  constraints on the Fastboot protocol buffer address range and limiting
++	  the commands available via the protocol. To allow the "fastboot" command
++	  to pass the whitelist, TDX_FB_PROTECTION_ALLOW_CMD must still be set.
++
++config TDX_FB_PROTECTION_ALLOW_CMD
++	bool "Allow the execution of the fastboot command"
++	default n
++	depends on TDX_FB_PROTECTION
++	help
++	  Allow the execution of the "fastboot" command (by the whitelist feature)
++	  when that command is protected (hardened). To reduce the attack surface,
++	  this option should be enabled only when strictly required, e.g. when
++	  users want to use a bootloader having Fastboot support to flash a device.
+diff --git a/common/autoboot.c b/common/autoboot.c
+index 1752dd58..b889ecc7 100644
+--- a/common/autoboot.c
++++ b/common/autoboot.c
+@@ -464,7 +464,23 @@ const char *bootdelay_process(void)
+ 	if (IS_ENABLED(CONFIG_OF_CONTROL))
+ 		bootdelay = ofnode_conf_read_int("bootdelay", bootdelay);
+ 
+-#if defined(is_boot_from_usb)
++#if defined(is_boot_from_usb) && defined(CONFIG_TDX_FB_PROTECTION)
++	/*
++	 * A U-Boot built for the serial downloader, with the Toradex
++	 * Fastboot protection: whatever the stored environment holds, use the
++	 * default one and run "fastboot 0". No bootcmd_mfg, whose "iminfo"
++	 * the whitelist refuses on a closed part, and no altbootcmd.
++	 */
++	if (is_boot_from_usb()) {
++		disconnect_from_pc();
++		printf("Boot from USB for uuu\n");
++		bootdelay = 0;
++		env_set_default("Use default environment for uuu\n", 0);
++		env_set("bootcmd", "fastboot 0");
++	} else {
++		printf("Normal Boot\n");
++	}
++#elif defined(is_boot_from_usb)
+ 	if (is_boot_from_usb() && env_get("bootcmd_mfg")) {
+ 		disconnect_from_pc();
+ 		printf("Boot from USB for mfgtools\n");
+@@ -495,7 +511,10 @@ const char *bootdelay_process(void)
+ 	else
+ 		s = env_get("bootcmd");
+ 
+-#if defined(is_boot_from_usb)
++#if defined(is_boot_from_usb) && defined(CONFIG_TDX_FB_PROTECTION)
++	if (is_boot_from_usb())
++		s = env_get("bootcmd");
++#elif defined(is_boot_from_usb)
+ 	if (is_boot_from_usb() && env_get("bootcmd_mfg")) {
+ 		s = env_get("bootcmd_mfg");
+ 		printf("Run bootcmd_mfg: %s\n", s);
+diff --git a/common/whitelist.c b/common/whitelist.c
+index 6f66a667..ef80ca6d 100644
+--- a/common/whitelist.c
++++ b/common/whitelist.c
+@@ -319,6 +319,14 @@ static const struct cmd_whitelist_entry cmd_whitelist[] = {
+ 	{ { "mmcinfo", ALL }, { CMD_CAT_MMC_DIAG } },
+ 	{ { "mtest", ALL }, { CMD_CAT_MEM_WRITE } },
+ 	{ { "mw", ALL }, { CMD_CAT_MEM_WRITE } },
++#ifdef CONFIG_TDX_FB_PROTECTION_ALLOW_CMD
++	/*
++	 * The install over the serial downloader writes U-Boot to the NAND
++	 * with its boot control blocks. The Fastboot protection lets it run
++	 * only with the download buffer as its source.
++	 */
++	{ { "nandbcb", "init", ALL }, { CMD_CAT_MEM_READ, CMD_CAT_NEEDED } },
++#endif
+ 	{ { "net", "list", ALL }, { CMD_CAT_NET_DIAG } },
+ 	{ { "nfs", ALL }, { CMD_CAT_EXEC, CMD_CAT_MEM_WRITE } },
+ 	{ { "nm", ALL }, { CMD_CAT_MEM_READ, CMD_CAT_MEM_WRITE } },
+diff --git a/drivers/fastboot/fb_common.c b/drivers/fastboot/fb_common.c
+index 79c8aa16..28fe2082 100644
+--- a/drivers/fastboot/fb_common.c
++++ b/drivers/fastboot/fb_common.c
+@@ -18,6 +18,12 @@
+ #include <net.h>
+ #include <image.h>
+ 
++#ifdef CONFIG_TDX_FB_PROTECTION
++#include <asm/global_data.h>
++DECLARE_GLOBAL_DATA_PTR;
++#include <lmb.h>
++#endif
++
+ /**
+  * fastboot_buf_addr - base address of the fastboot download buffer
+  */
+@@ -228,6 +234,38 @@ void fastboot_set_progress_callback(void (*progress)(const char *msg))
+ 	fastboot_progress_callback = progress;
+ }
+ 
++static void fastboot_constrain_buffer(void)
++{
++#ifdef CONFIG_TDX_FB_PROTECTION
++#ifndef CONFIG_LMB
++#error CONFIG_TDX_FB_PROTECTION requires CONFIG_LMB to be enabled
++#endif
++	bool reset_to_default = false;
++	const ulong addr = (ulong) fastboot_buf_addr;
++	const ulong size = (ulong) fastboot_buf_size;
++
++	if (gd->fdt_blob) {
++		int tdx_valid_loadaddr(struct lmb *lmb, phys_addr_t base, phys_size_t size);
++		struct lmb lmb;
++
++		lmb_init_and_reserve(&lmb, gd->bd, (void *) gd->fdt_blob);
++		lmb_dump_all(&lmb);
++
++		if (!tdx_valid_loadaddr(&lmb, addr, size))
++			reset_to_default = true;
++	} else {
++		eputs("## ERROR: Fastboot protection is enabled but fdt_blob == NULL\n");
++		reset_to_default = true;
++	}
++
++	if (reset_to_default) {
++		eputs("## WARNING: Resetting Fastboot buffer address/size to default\n");
++		fastboot_buf_addr = (void *) CONFIG_FASTBOOT_BUF_ADDR;
++		fastboot_buf_size = CONFIG_FASTBOOT_BUF_SIZE;
++	}
++#endif
++}
++
+ /*
+  * fastboot_init() - initialise new fastboot protocol session
+  *
+@@ -244,5 +282,6 @@ void fastboot_init(void *buf_addr, u32 buf_size)
+ 				       (void *)CONFIG_FASTBOOT_BUF_ADDR;
+ #endif
+ 	fastboot_buf_size = buf_size ? buf_size : CONFIG_FASTBOOT_BUF_SIZE;
++	fastboot_constrain_buffer();
+ 	fastboot_set_progress_callback(NULL);
+ }
+diff --git a/drivers/fastboot/fb_fsl/fb_fsl_command.c b/drivers/fastboot/fb_fsl/fb_fsl_command.c
+index 778e9d67..3156248b 100644
+--- a/drivers/fastboot/fb_fsl/fb_fsl_command.c
++++ b/drivers/fastboot/fb_fsl/fb_fsl_command.c
+@@ -19,6 +19,8 @@
+ #include <asm/arch/sys_proto.h>
+ #include <asm/setup.h>
+ #include <env.h>
++#include <linux/ctype.h>
++#include <vsprintf.h>
+ #ifdef CONFIG_ANDROID_RECOVERY
+ #include <recovery.h>
+ #endif
+@@ -1129,6 +1131,74 @@ int fastboot_set_reboot_flag(enum fastboot_reboot_reason reason)
+ }
+ 
+ #if CONFIG_IS_ENABLED(FASTBOOT_UUU_SUPPORT)
++#ifdef CONFIG_TDX_FB_PROTECTION
++/*
++ * With the Toradex Fastboot protection, UCmd and ACmd run only the commands
++ * the NAND installation sends, written as plain words: "hab_status", and
++ * "nandbcb init <buffer> nandboot <size>", where <buffer> is the download
++ * buffer and <size> a hexadecimal number within it or "${filesize}", the
++ * size of the last download. The command whitelist alone is not enough here:
++ * it lets every command it marks as needed for booting through with any
++ * arguments. Anything else that is not plain words (";", "$", quotes, ...)
++ * is refused, so no second command or variable can follow.
++ */
++static bool fb_tdx_cmd_allowed(const char *cmd)
++{
++	static const char filesize[] = " ${filesize}";
++	const size_t fl = sizeof(filesize) - 1;
++	char buf[64], *p, *end, *w[6];
++	size_t len = strlen(cmd);
++	bool var_size = false;
++	int n = 0;
++
++	if (len >= sizeof(buf))
++		return false;
++	strcpy(buf, cmd);
++	if (len > fl && !strcmp(buf + len - fl, filesize)) {
++		buf[len - fl] = '\0';
++		var_size = true;
++	}
++	for (p = buf; *p; p++)
++		if (!isalnum(*p) && !strchr("_.:- ", *p))
++			return false;
++	p = buf;
++	while (p) {
++		char *t = strsep(&p, " ");
++
++		if (!*t)
++			continue;
++		if (n == ARRAY_SIZE(w))
++			return false;
++		w[n++] = t;
++	}
++	if (!n)
++		return false;
++	if (n == 1 && !var_size && !strcmp(w[0], "hab_status"))
++		return true;
++	if (n != (var_size ? 4 : 5) || strcmp(w[0], "nandbcb") ||
++	    strcmp(w[1], "init") || strcmp(w[3], "nandboot"))
++		return false;
++	if (simple_strtoul(w[2], &end, 16) != CONFIG_FASTBOOT_BUF_ADDR || *end)
++		return false;
++	if (!var_size) {
++		ulong size = simple_strtoul(w[4], &end, 16);
++
++		if (*end || !size || size > CONFIG_FASTBOOT_BUF_SIZE)
++			return false;
++	}
++	return true;
++}
++
++static bool fb_tdx_cmd_check(const char *cmd, char *response)
++{
++	if (fb_tdx_cmd_allowed(cmd))
++		return true;
++	eputs("## WARNING: Fastboot command denied (not an installation command)\n");
++	fastboot_fail("command not allowed", response);
++	return false;
++}
++#endif
++
+ /**
+  * run_ucmd() - Execute the UCmd command
+  *
+@@ -1142,6 +1212,10 @@ static void run_ucmd(char *cmd_parameter, char *response)
+ 		fastboot_fail("missing command", response);
+ 		return;
+ 	}
++#ifdef CONFIG_TDX_FB_PROTECTION
++	if (!fb_tdx_cmd_check(cmd_parameter, response))
++		return;
++#endif
+ 	if(run_command(cmd_parameter, 0)) {
+ 		fastboot_fail("", response);
+ 	} else {
+@@ -1172,6 +1246,10 @@ static void run_acmd(char *cmd_parameter, char *response)
+ 		return;
+ 	}
+ 
++#ifdef CONFIG_TDX_FB_PROTECTION
++	if (!fb_tdx_cmd_check(cmd_parameter, response))
++		return;
++#endif
+ 	if (strlen(cmd_parameter) >= sizeof(g_a_cmd_buff)) {
+ 		pr_err("input acmd is too long\n");
+ 		fastboot_fail("too long command", response);
+@@ -1216,6 +1294,16 @@ static const struct {
+ 	const char *command;
+ 	void (*dispatch)(char *cmd_parameter, char *response);
+ } commands[FASTBOOT_COMMAND_COUNT] = {
++#ifndef CONFIG_TDX_FB_PROTECTION
++		/*
++		 * With the Toradex Fastboot protection, only the commands needed
++		 * for flashing a device are kept, as in Toradex's protection of
++		 * upstream U-Boot: getvar, download, flash, erase, continue, UCmd
++		 * and ACmd. UCmd and ACmd still pass the command whitelist.
++		 * "upload" and "get_staged" would read memory back to the host;
++		 * "boot", "reboot*", "oem", "flashing" and "set_active" have
++		 * U-Boot commands or no use on this path.
++		 */
+ 		[FASTBOOT_COMMAND_REBOOT_BOOTLOADER] = {
+ 			.command = "reboot-bootloader",
+ 			.dispatch = reboot_bootloader,
+@@ -1246,6 +1334,7 @@ static const struct {
+ 			.dispatch = set_active_avb,
+ 		},
+ #endif
++#endif /* CONFIG_TDX_FB_PROTECTION */
+ #if CONFIG_IS_ENABLED(FASTBOOT_UUU_SUPPORT)
+ 		[FASTBOOT_COMMAND_UCMD] = {
+ 			.command = "UCmd",
+@@ -1256,10 +1345,12 @@ static const struct {
+ 			.dispatch = run_acmd,
+ 		},
+ #endif
++#ifndef CONFIG_TDX_FB_PROTECTION
+ 		[FASTBOOT_COMMAND_REBOOT] = {
+ 			.command = "reboot",
+ 			.dispatch = okay,
+ 		},
++#endif
+ 		[FASTBOOT_COMMAND_GETVAR] = {
+ 			.command = "getvar",
+ 			.dispatch = getvar,
+@@ -1268,10 +1359,12 @@ static const struct {
+ 			.command = "download",
+ 			.dispatch = download,
+ 		},
++#ifndef CONFIG_TDX_FB_PROTECTION
+ 		[FASTBOOT_COMMAND_BOOT] = {
+ 			.command = "boot",
+ 			.dispatch = okay,
+ 		},
++#endif
+ 		[FASTBOOT_COMMAND_CONTINUE] = {
+ 			.command = "continue",
+ 			.dispatch = okay,
+@@ -1286,6 +1379,7 @@ static const struct {
+ 			.dispatch = erase,
+ 		},
+ #endif
++#ifndef CONFIG_TDX_FB_PROTECTION
+ #ifdef CONFIG_AVB_ATX
+ 		[FASTBOOT_COMMAND_STAGE] = {
+ 			.command = "stage",
+@@ -1304,6 +1398,7 @@ static const struct {
+ 			.dispatch = snapshot_update,
+ 		},
+ #endif
++#endif /* CONFIG_TDX_FB_PROTECTION */
+ };
+ 
+ /**

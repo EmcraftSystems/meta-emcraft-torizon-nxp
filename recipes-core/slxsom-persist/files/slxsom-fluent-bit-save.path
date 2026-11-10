@@ -1,0 +1,8 @@
+[Unit]
+Description=Keep device monitoring on across reboots of a signed image
+
+[Path]
+PathExists=/etc/fluent-bit/enabled
+
+[Install]
+WantedBy=paths.target

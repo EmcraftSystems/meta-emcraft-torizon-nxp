@@ -1,0 +1,6 @@
+[Unit]
+Description=Keep device monitoring on across reboots of a signed image
+
+[Service]
+Type=oneshot
+ExecStart=/bin/touch /var/rootdirs/etc/fluent-bit/enabled
